@@ -1,36 +1,57 @@
-from datetime import date
 from textwrap import dedent
 
 import uvicorn
 from fastapi import Depends, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.requests import Request
 from telethon import TelegramClient
 
-from dependencies import mentor_api, telegram_client
+from dependencies import mentor_api, telegram_client, DependencyError
 from get_study_days import get_study_days
 from mentors import MentorsAPI
 from plans import parse_order
 from settings import settings
 
 
+async def catch_exception_middleware(request: Request, err) -> JSONResponse:
+    return JSONResponse(
+        content={'message': 'Не получается создать клиент телеграма. Проверьте токен.'},
+        status_code=400
+    )
+
+
 async def send_user_in_academic_leave(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     order_uuid: str = Query(description='UUID заказа'),
-    date_from: date = Query(description='Старт академа'),
-    date_to: date  = Query(description='Конец академа'),
-    reason: str | None = Query(default=None, description='Причина')
+    splitter: str = Query(default='ac:',description='Метка академа')
 ) -> None:
-
     order = mentor_api.get_order(order_uuid)
-    dvmn_profile = order['student']['profile']['username_to_dvmn_org']
-    tg_profile = order['student']['profile']['telegram_username']
+    student = order['student']
+    
+    dvmn_profile = student['profile']['username_to_dvmn_org']
+    tg_profile = student['profile']['telegram_username']
+    
+    notes = student['notes']
+    comment = next((
+        n for n in notes
+        if not n['is_hidden'] and splitter in n['content']
+    ), None)
+
+    if not comment:
+        return JSONResponse(
+            content={'message': f'Нет заметки об академе с разделителем {splitter}'},
+            status_code=400
+        )
+
+    comment_text = comment['content'].split('ac: ')[-1]
 
     text = f'''
     #академ
 
     Dvmn: {dvmn_profile}, tg: {tg_profile}
-    {date_from.strftime('%d %m %Y г.')} - {date_to.strftime('%d %m %Y г.')}
-    {reason}
+    {comment_text}
     '''
 
     await client.send_message(
@@ -38,6 +59,7 @@ async def send_user_in_academic_leave(
         message=dedent(text),
         link_preview=False,
     )
+    return {'message': 'Сообщение отправлено в чат менторов'}
 
 
 async def send_user_in_internship(
@@ -61,17 +83,24 @@ async def send_user_in_internship(
         message=dedent(text),
         link_preview=False,
     )
+    return {'message': 'Сообщение успешно отправлено главе менторов'}
 
 
 async def send_plan(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     order_uuid: str = Query(description='UUID заказа'),
-) -> None:
+) -> dict[str, str]:
     order = mentor_api.get_order(order_uuid)
     user_tg = order['student']['profile']['telegram_username']
 
-    plan_info = parse_order(mentor_api, order)[user_tg]
+    try:
+        plan_info = parse_order(mentor_api, order)[user_tg]
+    except Exception:
+        return JSONResponse(
+            content={'message': 'Что-то не так с планом'},
+            status_code=400
+        )
     
     gist = plan_info['gist']
     comment = plan_info['comment']
@@ -80,8 +109,10 @@ async def send_plan(
         user_tg, 1, search=gist
     )
     if message_with_gist:
-        print(f'Ученику: {user_tg} уже был выдан план с таким гистом.')
-        return
+        return JSONResponse(
+            content={'message': 'План уже был выдан'},
+            status_code=400
+        )
 
     text = dedent(f"""\
     #ЕженедельныйПлан
@@ -100,6 +131,7 @@ async def send_plan(
         """)
 
     await client.send_message(user_tg, text, link_preview=False)
+    return {'message': 'План был успешно отправлен'}
 
 
 async def send_plans(
@@ -114,12 +146,17 @@ async def send_plans(
             continue
         messages.update(parse_order(mentor_api, order))
     
+    res_messages = []
     for tag, info in messages.items():
         message_with_gist = await client.get_messages(
             tag, 1, search=info['gist']
         )
         if message_with_gist:
-            print(f'Ученику: {tag} уже был выдан план с таким гистом.')
+            res_messages.append({
+                'status': 'warning',
+                'order_id': info['order_id'],
+                'message': f'План с этим гистом уже был выдан.'
+            })
             continue
             
         text = dedent(f"""\
@@ -138,22 +175,59 @@ async def send_plans(
             {comment}
             """)
         
-        await client.send_message(tag, text, link_preview=False)
+        try:
+            await client.send_message(tag, text, link_preview=False)
+            res_messages.append({
+                'status': 'ok',
+                'order_id': info['order_id'],
+                'message': 'План успешно выдан.'
+            })
+        except Exception:
+            res_messages.append({
+                'status': 'error',
+                'order_id': info['order_id'],
+                'message': f'План не отправлен, ошибка.'
+            })
+            continue
+
+
+    return {'messages': res_messages}
 
 
 async def get_dvmn_study_days(
     mentor_api: MentorsAPI = Depends(mentor_api),
     order_uuid: str = Query(description='UUID заказа'),
-) -> int:
+) -> dict[str, str]:
 
     order = mentor_api.get_order(order_uuid)
     dvmn_profile = order['student']['profile']['username_to_dvmn_org']
-    study_days = get_study_days(f'https://dvmn.org/user/{dvmn_profile}/history/')
-    return int(study_days)
+    try:
+        study_days = get_study_days(f'https://dvmn.org/user/{dvmn_profile}/history/')
+        return {'message': study_days}
+    except Exception:
+        return JSONResponse(
+            content={'message': '¯\_(ツ)_/¯'},
+            status_code=400
+        )
 
 
 def main():
     app = FastAPI()
+
+    origins = [
+        'https://mentors.dvmn.org',
+        'http://mentors.dvmn.org'
+    ]
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=['*'],
+        allow_headers=['*'],
+        allow_credentials=True,
+    )
+
+    app.add_exception_handler(DependencyError, catch_exception_middleware)
 
     app.add_api_route(
         path='/academic_leave/',

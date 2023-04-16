@@ -29,6 +29,7 @@ def parse_order(api: MentorsAPI, order: dict[Any, Any]) -> dict[Any, Any]:
         student_tg: {
             'gist': gist,
             'comment': comment_text,
-            'dvmn_link': dvmn_link
+            'dvmn_link': dvmn_link,
+            'order_id': order['uuid']
         }
     }

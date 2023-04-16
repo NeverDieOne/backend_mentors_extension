@@ -6,14 +6,21 @@ from settings import settings
 from mentors import MentorsAPI
 
 
+class DependencyError(Exception):
+    pass
+
+
 async def telegram_client(
     session: str | None = Header()
 ) -> TelegramClient:
-    client = TelegramClient(
-        StringSession(session),
-        api_id=settings.tg_api_id,
-        api_hash=settings.tg_api_hash
-    )
+    try:
+        client = TelegramClient(
+            StringSession(session),
+            api_id=settings.tg_api_id,
+            api_hash=settings.tg_api_hash
+        )
+    except Exception:
+        raise DependencyError('Не могу создать клиент телеграма.')
 
     try:
         await client.start()
