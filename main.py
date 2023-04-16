@@ -1,13 +1,13 @@
 from textwrap import dedent
 
 import uvicorn
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 from telethon import TelegramClient
 
-from authorization import auth_router, AuthError
+from authorization import AuthError, auth_router
 from dependencies import DependencyError, mentor_api, telegram_client
 from get_study_days import get_study_days
 from mentors import MentorsAPI
@@ -98,7 +98,7 @@ async def send_plan(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     order_uuid: str = Query(description='UUID заказа'),
-    template: str = Query(description='Шаблон сообщения')
+    template: str = Body(description='Шаблон')
 ) -> dict[str, str]:
     order = mentor_api.get_order(order_uuid)
     user_tg = order['student']['profile']['telegram_username']
@@ -112,8 +112,6 @@ async def send_plan(
         )
     
     gist = plan_info['gist']
-    comment = plan_info['comment']
-
     message_with_gist = await client.get_messages(
         user_tg, 1, search=gist
     )
@@ -123,9 +121,9 @@ async def send_plan(
             status_code=400
         )
 
+    comment = plan_info.get('comment') or ''
     text = template.replace('{gist}', gist)
-    if comment:
-        text = text.replace('{comment}', comment)
+    text = text.replace('{comment}', comment)
 
     await client.send_message(user_tg, text, link_preview=False)
     return {'message': 'План был успешно отправлен'}
@@ -135,7 +133,7 @@ async def send_plans(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     mentor_uuid: str = Query(description='UUID ментора'),
-    template: str = Query(description='Шаблон сообщения')
+    template: str = Body(description='Шаблон')
 ) -> None:
     orders = mentor_api.get_mentor_orders(mentor_uuid)
     messages = {}
@@ -158,8 +156,8 @@ async def send_plans(
             continue
             
         text = template.replace('{gist}', info['gist'])
-        if comment := info.get('comment'):
-            text = template.replace('{comment}', comment)
+        comment = info.get('comment') or ''
+        text = template.replace('{comment}', comment)
         
         try:
             await client.send_message(tag, text, link_preview=False)
