@@ -98,6 +98,7 @@ async def send_plan(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     order_uuid: str = Query(description='UUID заказа'),
+    template: str = Query(description='Шаблон сообщения')
 ) -> dict[str, str]:
     order = mentor_api.get_order(order_uuid)
     user_tg = order['student']['profile']['telegram_username']
@@ -122,21 +123,9 @@ async def send_plan(
             status_code=400
         )
 
-    text = dedent(f"""\
-    #ЕженедельныйПлан
-
-    Приветосий :)
-    Держи планчик на новую неделю:
-    {gist}
-
-    """)
-
+    text = template.replace('{gist}', gist)
     if comment:
-        text += dedent(f"""\
-        {'-' * 5}
-
-        {comment}
-        """)
+        text = text.replace('{comment}', comment)
 
     await client.send_message(user_tg, text, link_preview=False)
     return {'message': 'План был успешно отправлен'}
@@ -146,6 +135,7 @@ async def send_plans(
     client: TelegramClient = Depends(telegram_client),
     mentor_api: MentorsAPI = Depends(mentor_api),
     mentor_uuid: str = Query(description='UUID ментора'),
+    template: str = Query(description='Шаблон сообщения')
 ) -> None:
     orders = mentor_api.get_mentor_orders(mentor_uuid)
     messages = {}
@@ -167,21 +157,9 @@ async def send_plans(
             })
             continue
             
-        text = dedent(f"""\
-            #ЕженедельныйПлан
-
-            Приветосий :)
-            Держи планчик на новую неделю:
-            {info['gist']}
-
-            """)
-
+        text = template.replace('{gist}', info['gist'])
         if comment := info.get('comment'):
-            text += dedent(f"""\
-            {'-' * 5}
-
-            {comment}
-            """)
+            text = template.replace('{comment}', comment)
         
         try:
             await client.send_message(tag, text, link_preview=False)
