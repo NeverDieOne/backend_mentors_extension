@@ -3,11 +3,12 @@ from textwrap import dedent
 import uvicorn
 from fastapi import Depends, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from fastapi.requests import Request
+from fastapi.responses import JSONResponse
 from telethon import TelegramClient
 
-from dependencies import mentor_api, telegram_client, DependencyError
+from authorization import auth_router, AuthError
+from dependencies import DependencyError, mentor_api, telegram_client
 from get_study_days import get_study_days
 from mentors import MentorsAPI
 from plans import parse_order
@@ -17,6 +18,13 @@ from settings import settings
 async def catch_exception_middleware(request: Request, err) -> JSONResponse:
     return JSONResponse(
         content={'message': 'Не получается создать клиент телеграма. Проверьте токен.'},
+        status_code=400
+    )
+
+
+async def catch_auth_exception_middleware(request: Request, err) -> JSONResponse:
+    return JSONResponse(
+        content={'message': 'Что-то пошло не так. Проверьте запросы в Network'},
         status_code=400
     )
 
@@ -214,26 +222,15 @@ async def get_dvmn_study_days(
 def main():
     app = FastAPI()
 
-    origins = [
-        'https://mentors.dvmn.org',
-        'http://mentors.dvmn.org'
-    ]
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=origins,
-        allow_methods=['*'],
-        allow_headers=['*'],
-        allow_credentials=True,
-    )
-
     app.add_exception_handler(DependencyError, catch_exception_middleware)
+    app.add_exception_handler(AuthError, catch_auth_exception_middleware)
 
     app.add_api_route(
         path='/academic_leave/',
         endpoint=send_user_in_academic_leave,
         methods=['POST'],
         description='Отправить ученика в академ',
+        tags=['Mentors']
     )
 
     app.add_api_route(
@@ -241,27 +238,43 @@ def main():
         endpoint=send_user_in_internship,
         methods=['POST'],
         description='Отправить ученика на стажировку',
+        tags=['Mentors']
     )
 
     app.add_api_route(
         path='/send_plan/',
         endpoint=send_plan,
         methods=['POST'],
-        description='Отправить план'
+        description='Отправить план',
+        tags=['Mentors']
     )
 
     app.add_api_route(
         path='/send_plans/',
         endpoint=send_plans,
         methods=['POST'],
-        description='Отправить планы всем ученикам'
+        description='Отправить планы всем ученикам',
+        tags=['Mentors']
     )
 
     app.add_api_route(
         path='/get_study_days/',
         endpoint=get_dvmn_study_days,
         methods=['GET'],
-        description='Получить кол-во дней, которые занимался ученик'
+        description='Получить кол-во дней, которые занимался ученик',
+        tags=['Mentors']
+    )
+
+    app.include_router(auth_router)
+
+    origins = ['*']
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=['*'],
+        allow_headers=['*'],
+        allow_credentials=True,
     )
 
     uvicorn.run(app)
