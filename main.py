@@ -157,7 +157,7 @@ async def send_plans(
             
         text = template.replace('{gist}', info['gist'])
         comment = info.get('comment') or ''
-        text = template.replace('{comment}', comment)
+        text = text.replace('{comment}', comment)
         
         try:
             await client.send_message(tag, text, link_preview=False)
