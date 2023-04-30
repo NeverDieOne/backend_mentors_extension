@@ -1,7 +1,7 @@
 import datetime
-import locale
 import re
 
+import dateparser
 import requests
 from bs4 import BeautifulSoup
 
@@ -14,10 +14,6 @@ def get_study_days(url: str, days: int = 7) -> int:
     logtable = soup.select_one('.logtable')
     blocks = logtable.select('.mt-4 .mb-4')
 
-    locale.setlocale(
-        category=locale.LC_ALL,
-        locale=''
-    )
 
     today = datetime.date.today()
     study_days = 0
@@ -27,7 +23,7 @@ def get_study_days(url: str, days: int = 7) -> int:
         day_info = re.sub(pattern, ' ', raw).strip()
 
         date = ' '.join(day_info.split(' ')[:4])
-        date = datetime.datetime.strptime(date, u'%d %B %Y г.').date()
+        date = dateparser.parse(date)
 
         if (today - date).days >= days:
             break
