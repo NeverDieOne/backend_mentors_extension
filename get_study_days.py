@@ -15,7 +15,7 @@ def get_study_days(url: str, days: int = 7) -> int:
     blocks = logtable.select('.mt-4 .mb-4')
 
 
-    today = datetime.date.today()
+    today = datetime.datetime.today()
     study_days = 0
     for block in blocks:
         raw = block.select_one('.align-items-center').text
