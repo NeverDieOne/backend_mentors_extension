@@ -197,11 +197,11 @@ async def get_dvmn_study_days(
 
 async def get_student_plans(
     mentor_api: MentorsAPI = Depends(mentor_api),
-    username: str = Query(description='Dvmn username'),
+    order_uuid: str = Query(description='Dvmn username'),
 ) -> dict[str, str | list[dict]]:
     
     try:
-        plans = mentor_api.get_weekly_plans(dvmn_username=username)
+        plans = mentor_api.get_weekly_plans(order_uuid=order_uuid)
         plans = sorted(plans, key=lambda p: p['finished_at'], reverse=True)
         return {
             'message': 'success',
