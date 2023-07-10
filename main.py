@@ -195,6 +195,25 @@ async def get_dvmn_study_days(
         )
 
 
+async def get_student_plans(
+    mentor_api: MentorsAPI = Depends(mentor_api),
+    username: str = Query(description='Dvmn username'),
+) -> dict[str, str | list[dict]]:
+    
+    try:
+        plans = mentor_api.get_weekly_plans(dvmn_username=username)
+        plans = sorted(plans, key=lambda p: p['finished_at'], reverse=True)
+        return {
+            'message': 'success',
+            'plans': [{'url': p['gist_url'], 'date': p['finished_at']} for p in plans]
+        }
+    except Exception:
+        return JSONResponse(
+            content={'message': 'Error during getting plans'},
+            status_code=400
+        )
+
+
 def main():
     app = FastAPI()
 
@@ -238,6 +257,14 @@ def main():
         endpoint=get_dvmn_study_days,
         methods=['GET'],
         description='Получить кол-во дней, которые занимался ученик',
+        tags=['Mentors']
+    )
+
+    app.add_api_route(
+        path='/get_student_plans/',
+        endpoint=get_student_plans,
+        methods=['GET'],
+        description='Получить ссылки на планы ученика',
         tags=['Mentors']
     )
 

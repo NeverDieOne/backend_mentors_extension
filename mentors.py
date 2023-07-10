@@ -63,11 +63,13 @@ class MentorsAPI:
     def get_weekly_plans(
         self,
         order_uuid: str | None = None,
-        student_uuid: str | None = None
+        student_uuid: str | None = None,
+        dvmn_username: str | None = None,
     ) -> list[dict[Any, Any]]:
         params = {
             'order_uuid': order_uuid,
-            'student_uuid': student_uuid
+            'student_uuid': student_uuid,
+            'username_to_dvmn_org': dvmn_username,
         }
         response = self.session.get(
             f'{self.base_url}/weekly-plans/',
